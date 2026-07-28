@@ -730,9 +730,9 @@ router.post('/logistics/tasks/batch', async (req: Request, res: Response) => {
           status: 'PENDING',
           type: t.type || 'DROPOFF_HUB',
           orderId: t.orderId,
-          targetLat: t.targetLat,
-          targetLng: t.targetLng,
-          address: t.address,
+          targetLat: t.targetLat || 0,
+          targetLng: t.targetLng || 0,
+          address: t.address || '',
           sortOrder: t.sortOrder || 0
         }
       }))

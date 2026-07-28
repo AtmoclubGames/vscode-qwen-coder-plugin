@@ -28,14 +28,51 @@ import { QRCodeSVG } from 'qrcode.react';
 
 const loadYandexMaps = async (callback: () => void) => {
   console.log('[MAPS] Init script load sequence called');
-  const ymaps3 = (window as any).ymaps3;
-  if (!ymaps3) {
+  
+  // Функция ожидания появления ymaps3 с таймаутом
+  const waitForYmaps3 = (maxAttempts = 50, delayMs = 100): Promise<boolean> => {
+    return new Promise((resolve) => {
+      let attempts = 0;
+      
+      const check = () => {
+        const ymaps3 = (window as any).ymaps3;
+        if (ymaps3) {
+          console.log('[MAPS] ymaps3 found on window');
+          resolve(true);
+          return;
+        }
+        
+        attempts++;
+        if (attempts >= maxAttempts) {
+          console.warn(`[MAPS] ymaps3 not found after ${maxAttempts} attempts. Using mock map.`);
+          resolve(false);
+          return;
+        }
+        
+        setTimeout(check, delayMs);
+      };
+      
+      check();
+    });
+  };
+  
+  const hasYmaps3 = await waitForYmaps3();
+  
+  if (!hasYmaps3) {
     console.error('[MAPS] ymaps3 object not found on window. Is the script blocked?');
     callback();
     return;
   }
-  await ymaps3.ready;
-  console.log('[MAPS] ymaps3.ready resolved. Executing callback');
+  
+  const ymaps3 = (window as any).ymaps3;
+  
+  try {
+    await ymaps3.ready;
+    console.log('[MAPS] ymaps3.ready resolved. Executing callback');
+  } catch (error) {
+    console.error('[MAPS] Error during ymaps3.ready:', error);
+  }
+  
   callback();
 };
 
