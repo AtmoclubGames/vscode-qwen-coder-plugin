@@ -1,42 +1,61 @@
 ```
-# Build artifacts
-backend/dist/
-backend/build/
-
-# Database
-backend/prisma/dev.db
-
 # Dependencies
-backend/node_modules/
-backend/venv/
-backend/.venv/
+node_modules/
 
-# Logs and temp files
+# Build outputs
+out/
+
+# Package lock file
+package-lock.json
+
+# Logs
 *.log
-*.tmp
-*.swp
 
-# Environment
+# Environment variables
 .env
 .env.local
 *.env.*
 
-# Editors
+# IDE files
 .vscode/
 .idea/
 
-# Python
+# Temporary files
+*.tmp
+*.swp
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# Coverage
-coverage/
-htmlcov/
-.coverage
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+.Python
 
-# OS
+# Compiled binary files
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Compressed archives
+*.zip
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.7z
+*.rar
+
+# OS generated files
 .DS_Store
 Thumbs.db
 ```
