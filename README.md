@@ -41,8 +41,10 @@ code --install-extension qwen-coder-bridge-0.0.1.vsix
 
 ### Настройки
 
+- `qwenCoderBridge.useProxy` - Использовать прокси-сервер (рекомендуется, по умолчанию: true)
+- `qwenCoderBridge.proxyUrl` - URL локального прокси-сервера (по умолчанию: http://localhost:3000)
+- `qwenCoderBridge.apiKey` - API ключ для DashScope API (резервный вариант)
 - `qwenCoderBridge.apiEndpoint` - URL API эндпоинта (по умолчанию: https://coder.qwen.ai/api)
-- `qwenCoderBridge.apiKey` - API ключ (если требуется)
 
 ## Как это работает
 
@@ -60,8 +62,14 @@ qwen-coder-bridge/
 │   └── extension.ts      # Основной код плагина
 ├── out/
 │   └── extension.js      # Скомпилированный JavaScript
+├── server/               # Прокси-сервер для работы с coder.qwen.ai
+│   ├── src/
+│   │   └── index.js     # Код сервера
+│   ├── package.json     # Зависимости сервера
+│   └── README.md        # Документация сервера
 ├── package.json          # Манифест расширения
 ├── tsconfig.json         # Конфигурация TypeScript
+├── SETUP_INSTRUCTION.md  # Подробная инструкция по запуску
 └── README.md            # Документация
 ```
 

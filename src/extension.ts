@@ -145,40 +145,148 @@ function createOrShowChatPanel(context: vscode.ExtensionContext) {
 
 async function handleAPICall(message: WebviewMessage, context: vscode.ExtensionContext) {
     const config = vscode.workspace.getConfiguration('qwenCoderBridge');
-    const apiEndpoint = config.get('apiEndpoint', 'https://coder.qwen.ai/api');
+    const proxyUrl = config.get('proxyUrl', 'http://localhost:3000');
+    const useProxy = config.get('useProxy', true);
+    const apiKey = config.get('apiKey', '');
     
     try {
-        const mockResponse = {
-            success: true,
-            data: {
-                response: "Это демо-ответ. Для реальной работы необходимо настроить API подключение к https://coder.qwen.ai/\n\n" +
-                         "Получен запрос: " + (message.text || '') + "\n\n" +
-                         "Контекст файлов: " + Object.keys(message.fileContents || {}).length + " файл(ов)\n\n" +
-                         "Пример кода для улучшения:\n```typescript\n// Ваш код здесь\nfunction optimizeCode() {\n    console.log('Hello from Qwen Coder!');\n}\n```",
-                suggestedChanges: {
-                    filePath: message.filePaths?.[0] || 'example.ts',
-                    newContent: "// Оптимизированный код от Qwen Coder\nfunction optimizedFunction(): void {\n    console.log('Optimized!');\n}"
-                }
-            }
-        };
-
-        if (chatViewPanel) {
-            sendMessageToWebview({
-                command: 'apiResponse',
-                responseId: message.responseId,
-                text: mockResponse.data.response,
-                suggestedChanges: mockResponse.data.suggestedChanges
+        if (useProxy) {
+            // Отправка запроса через прокси-сервер
+            const response = await fetch(`${proxyUrl}/api/chat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: message.text || '',
+                    files: Object.entries(message.fileContents || {}).map(([filePath, content]) => ({
+                        path: filePath,
+                        content: content
+                    }))
+                })
             });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch((): any => ({}));
+                if (response.status === 401) {
+                    throw new Error('Требуется авторизация в прокси-сервере. Откройте http://localhost:3000/api/auth/login-url для входа.');
+                }
+                const errorMsg = (errorData as any)?.error || (errorData as any)?.message || response.statusText;
+                throw new Error(`HTTP ${response.status}: ${errorMsg}`);
+            }
+
+            const data = await response.json() as any;
+            const assistantMessage = data.response?.content || data.response?.message || JSON.stringify(data.response);
+
+            // Пытаемся извлечь предложенные изменения из ответа
+            let suggestedChanges = undefined;
+            const codeBlockMatch = assistantMessage.match(/```(?:typescript|javascript|python|ts|js)?\s*([\s\S]*?)```/);
+            if (codeBlockMatch && message.filePaths && message.filePaths.length > 0) {
+                suggestedChanges = {
+                    filePath: message.filePaths[0],
+                    newContent: codeBlockMatch[1].trim()
+                };
+            }
+
+            if (chatViewPanel) {
+                sendMessageToWebview({
+                    command: 'apiResponse',
+                    responseId: message.responseId,
+                    text: assistantMessage,
+                    suggestedChanges: suggestedChanges
+                });
+            }
+        } else {
+            // Резервный вариант - прямой запрос к DashScope API
+            await handleDashScopeAPI(message, context, apiKey);
         }
 
     } catch (error) {
+        console.error('API Error:', error);
         if (chatViewPanel) {
             sendMessageToWebview({
                 command: 'apiError',
                 responseId: message.responseId,
-                text: 'Ошибка API: ' + error
+                text: `Ошибка API: ${error instanceof Error ? error.message : String(error)}\n\n${useProxy ? 'Убедитесь, что:\n1. Прокси-сервер запущен (npm start в папке server)\n2. Вы авторизовались в прокси-сервере' : 'Убедитесь, что:\n1. API ключ действителен\n2. У вас есть доступ к DashScope\n3. Интернет-соединение активно'}`
             });
         }
+    }
+}
+
+// Отдельная функция для работы с DashScope API (резервный вариант)
+async function handleDashScopeAPI(message: WebviewMessage, context: vscode.ExtensionContext, apiKey: string) {
+    if (!apiKey) {
+        if (chatViewPanel) {
+            sendMessageToWebview({
+                command: 'apiError',
+                responseId: message.responseId,
+                text: 'API ключ не настроен! Пожалуйста, укажите ваш API ключ DashScope в настройках расширения (File > Preferences > Settings > Qwen Coder Bridge) И включите использование прокси-сервера.'
+            });
+        }
+        return;
+    }
+
+    // Формируем запрос к DashScope API
+    const systemPrompt = "Ты опытный программист-помощник. Анализируй код, предлагай улучшения, объясняй ошибки. Отвечай на русском языке. Если предлагаешь изменения кода, указывай полный путь к файлу и новое содержимое.";
+    let userContent = message.text || '';
+
+    // Добавляем контекст файлов
+    if (message.fileContents && Object.keys(message.fileContents).length > 0) {
+        userContent += '\n\n--- КОНТЕКСТ ФАЙЛОВ ---\n';
+        for (const [filePath, content] of Object.entries(message.fileContents)) {
+            const fileName = require('path').basename(filePath);
+            userContent += `\nФайл: ${fileName}\nПуть: ${filePath}\nСодержимое:\n\`\`\`\n${content}\n\`\`\`\n`;
+        }
+    }
+
+    const requestBody = {
+        model: 'qwen-max',
+        input: {
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userContent }
+            ]
+        },
+        parameters: {
+            result_format: 'message'
+        }
+    };
+
+    const response = await fetch('https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch((): any => ({}));
+        throw new Error(`HTTP ${response.status}: ${(errorData as any)?.message || response.statusText}`);
+    }
+
+    const data = await response.json() as any;
+    // Парсим ответ от DashScope
+    const assistantMessage = data.output?.choices?.[0]?.message?.content || 'Нет ответа от модели';
+
+    // Пытаемся извлечь предложенные изменения из ответа (простая эвристика)
+    let suggestedChanges = undefined;
+    const codeBlockMatch = assistantMessage.match(/```(?:typescript|javascript|python|ts|js)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch && message.filePaths && message.filePaths.length > 0) {
+        suggestedChanges = {
+            filePath: message.filePaths[0],
+            newContent: codeBlockMatch[1].trim()
+        };
+    }
+
+    if (chatViewPanel) {
+        sendMessageToWebview({
+            command: 'apiResponse',
+            responseId: message.responseId,
+            text: assistantMessage,
+            suggestedChanges: suggestedChanges
+        });
     }
 }
 

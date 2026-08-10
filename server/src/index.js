@@ -1,7 +1,3 @@
---- server/src/index.js (原始)
-
-
-+++ server/src/index.js (修改后)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');

@@ -67,7 +67,17 @@
         "qwenCoderBridge.apiKey": {
           "type": "string",
           "default": "",
-          "description": "API ключ для доступа к Qwen Coder (если требуется)"
+          "description": "API ключ для доступа к DashScope API (резервный вариант)"
+        },
+        "qwenCoderBridge.useProxy": {
+          "type": "boolean",
+          "default": true,
+          "description": "Использовать прокси-сервер для работы с coder.qwen.ai (рекомендуется)"
+        },
+        "qwenCoderBridge.proxyUrl": {
+          "type": "string",
+          "default": "http://localhost:3000",
+          "description": "URL локального прокси-сервера"
         }
       }
     }

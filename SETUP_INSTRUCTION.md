@@ -1,7 +1,3 @@
---- SETUP_INSTRUCTION.md (原始)
-
-
-+++ SETUP_INSTRUCTION.md (修改后)
 # Инструкция по запуску Qwen Coder Bridge с прокси-сервером
 
 ## Структура проекта

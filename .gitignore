@@ -1,12 +1,14 @@
 ```
 # Dependencies
 node_modules/
+server/node_modules/
 
 # Build outputs
 out/
 
 # Package lock file
 package-lock.json
+server/package-lock.json
 
 # Logs
 *.log
@@ -15,6 +17,7 @@ package-lock.json
 .env
 .env.local
 *.env.*
+server/.env
 
 # IDE files
 .vscode/

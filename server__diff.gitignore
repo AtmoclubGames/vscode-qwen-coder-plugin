@@ -1,8 +1,0 @@
---- server/.gitignore (原始)
-
-
-+++ server/.gitignore (修改后)
-node_modules/
-.env
-*.log
-.DS_Store
