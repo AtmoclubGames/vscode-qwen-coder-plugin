@@ -11,7 +11,12 @@
     "Other",
     "Machine Learning"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:qwenCoderBridge.sendMessage",
+    "onCommand:qwenCoderBridge.addFileToContext",
+    "onCommand:qwenCoderBridge.applyChanges",
+    "onView:qwenCoderBridge.chatView"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
