@@ -1,0 +1,92 @@
+--- .gitignore (原始)
+```
+# Dependencies
+node_modules/
+
+# Build outputs
+out/
+
+# Package lock file
+package-lock.json
+
+# Logs
+*.log
+
+# Environment variables
+.env
+.env.local
+*.env.*
+
+# IDE files
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.swp
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+.Python
+
+# Compiled binary files
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Compressed archives
+*.zip
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.7z
+*.rar
+
+# OS generated files
+.DS_Store
+Thumbs.db
+```
+
++++ .gitignore (修改后)
+```
+# Build outputs
+out/
+dist/
+build/
+*.js.map
+
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Package lock files (already tracked in your repo, so ignoring just in case)
+package-lock.json
+server/package-lock.json
+```
