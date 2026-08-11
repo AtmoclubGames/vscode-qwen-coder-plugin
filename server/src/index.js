@@ -120,51 +120,75 @@ app.post('/api/chat', async (req, res) => {
             });
         }
         
-        console.log('📤 Отправка запроса к Qwen Coder...');
+        console.log('\n📤 Отправка запроса к Qwen Coder...');
         console.log('🍪 Cookies:', Object.keys(sessionCookies).length, 'шт');
         console.log('💬 Сообщение:', message.substring(0, 100) + '...');
+        console.log('🔑 Cookie строка (первые 200 символов):', cookieString.substring(0, 200) + '...');
         
-        // Пробуем разные варианты эндпоинтов
-        const endpoints = [
-            'https://coder.qwen.ai/api/chat',
-            'https://coder.qwen.ai/api/v1/chat',
-            'https://coder.qwen.ai/v1/chat/completions'
+        // Эмулируем браузерные заголовки
+        const browserHeaders = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json, text/plain, */*',
+            'Cookie': cookieString,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-origin'
+        };
+        
+        // Пробуем разные эндпоинты с правильными payload
+        const attempts = [
+            {
+                name: 'API Chat (простой)',
+                url: 'https://coder.qwen.ai/api/chat',
+                payload: { message: message + fileContext, stream: false },
+                headers: { ...browserHeaders, 'Origin': 'https://coder.qwen.ai', 'Referer': 'https://coder.qwen.ai/' }
+            },
+            {
+                name: 'API Conversation',
+                url: 'https://coder.qwen.ai/api/conversation',
+                payload: { message: message + fileContext, stream: false },
+                headers: { ...browserHeaders, 'Origin': 'https://coder.qwen.ai', 'Referer': 'https://coder.qwen.ai/' }
+            },
+            {
+                name: 'OpenAI-style Completions',
+                url: 'https://coder.qwen.ai/v1/chat/completions',
+                payload: { model: 'qwen-coder-plus', messages: [{ role: 'user', content: message + fileContext }], stream: false, temperature: 0.7 },
+                headers: { ...browserHeaders }
+            }
         ];
         
         let lastError = null;
         let responseData = null;
         
-        for (const endpoint of endpoints) {
+        for (const attempt of attempts) {
             try {
-                console.log('🔄 Попытка:', endpoint);
+                console.log('\n🔄 Попытка #' + (attempts.indexOf(attempt) + 1) + ': ' + attempt.name);
+                console.log('   URL:', attempt.url);
+                console.log('   Payload:', JSON.stringify(attempt.payload).substring(0, 200));
                 
-                const response = await axios.post(endpoint, 
-                    { 
-                        message: message + fileContext, 
-                        stream: false,
-                        model: 'qwen-coder-plus'
-                    }, 
-                    { 
-                        headers: { 
-                            'Content-Type': 'application/json', 
-                            'Cookie': cookieString, 
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                            'Origin': 'https://coder.qwen.ai',
-                            'Referer': 'https://coder.qwen.ai/'
-                        }, 
-                        timeout: 60000 
-                    }
-                );
+                const response = await axios.post(attempt.url, attempt.payload, { 
+                    headers: attempt.headers,
+                    timeout: 60000,
+                    maxRedirects: 5,
+                    validateStatus: (status) => status >= 200 && status < 300
+                });
                 
                 responseData = response.data;
-                console.log('✅ Успех!', endpoint);
-                console.log('📦 Ответ:', JSON.stringify(responseData).substring(0, 200));
+                console.log('✅ Успех! Status:', response.status);
+                console.log('📦 Ответ:', JSON.stringify(responseData).substring(0, 500));
                 break;
             } catch (err) {
                 lastError = err;
-                console.log('❌ Ошибка:', endpoint, err.response?.status || 'N/A', err.message);
+                console.log('❌ Ошибка:', attempt.url);
+                console.log('   Status:', err.response?.status || 'N/A');
+                console.log('   Message:', err.message);
                 if (err.response) {
                     console.log('📄 Детали ошибки:', JSON.stringify(err.response.data).substring(0, 500));
+                    console.log('📭 Заголовки ответа:', JSON.stringify(err.response.headers).substring(0, 300));
                 }
             }
         }
@@ -175,7 +199,8 @@ app.post('/api/chat', async (req, res) => {
         
         res.json({ success: true, response: responseData, timestamp: new Date().toISOString() });
     } catch (error) {
-        console.error('❌ Критическая ошибка:', error.message);
+        console.error('\n❌ Критическая ошибка:', error.message);
+        console.error('📚 Stack:', error.stack);
         if (error.response) {
             res.status(error.response.status).json({ 
                 error: 'Ошибка API Qwen', 
