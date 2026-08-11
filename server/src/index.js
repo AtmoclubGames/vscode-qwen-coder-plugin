@@ -19,20 +19,37 @@ app.get('/', (req, res) => res.send(authHTML));
 
 app.get('/api/auth/status', (req, res) => {
     const hasSession = Object.keys(sessionCookies).length > 0;
-    res.json({ authenticated: hasSession, message: hasSession ? 'Авторизация активна' : 'Требуется авторизация', cookiesCount: Object.keys(sessionCookies).length, cookies: sessionCookies });
+    res.json({ 
+        authenticated: hasSession, 
+        message: hasSession ? 'Авторизация активна' : 'Требуется авторизация', 
+        cookiesCount: Object.keys(sessionCookies).length, 
+        cookies: sessionCookies 
+    });
 });
 
 app.get('/api/auth/login-url', (req, res) => {
-    res.json({ loginUrl: 'https://coder.qwen.ai/', webInterface: 'http://localhost:' + PORT, instructions: '1. Откройте http://localhost:' + PORT + '\\n2. Следуйте инструкциям' });
+    res.json({ 
+        loginUrl: 'https://coder.qwen.ai/', 
+        webInterface: 'http://localhost:' + PORT, 
+        instructions: '1. Откройте http://localhost:' + PORT + '\n2. Следуйте инструкциям' 
+    });
 });
 
 function parseCookies(input) {
     const cookies = {};
     const lines = input.split(/[\n\r]+/);
+    
     for (const line of lines) {
         if (!line.trim()) continue;
+        
+        // Формат таблицы браузера (tab-separated): name\tvalue\tdomain...
         const tabMatch = line.match(/^([^\t]+)\t([^\t]+)\t/);
-        if (tabMatch) { cookies[tabMatch[1].trim()] = tabMatch[2].trim(); continue; }
+        if (tabMatch) { 
+            cookies[tabMatch[1].trim()] = tabMatch[2].trim(); 
+            continue; 
+        }
+        
+        // Формат name=value; name2=value2
         if (line.includes('=') && !line.includes('\t')) {
             line.split(';').forEach(pair => {
                 const trimmed = pair.trim();
@@ -45,46 +62,143 @@ function parseCookies(input) {
             });
             continue;
         }
+        
+        // JSON формат
         try {
             const json = JSON.parse(line);
-            if (Array.isArray(json)) json.forEach(c => { if (c.name && c.value) cookies[c.name] = c.value; });
-            else if (typeof json === 'object') Object.entries(json).forEach(([n, v]) => cookies[n] = v);
+            if (Array.isArray(json)) {
+                json.forEach(c => { if (c.name && c.value) cookies[c.name] = c.value; });
+            } else if (typeof json === 'object') {
+                Object.entries(json).forEach(([n, v]) => cookies[n] = v);
+            }
         } catch (e) {}
     }
+    
     return cookies;
 }
 
 app.post('/api/auth/set-cookies', (req, res) => {
     const { cookies } = req.body;
-    if (!cookies || typeof cookies !== 'string') return res.status(400).json({ error: 'Необходимо предоставить cookies в виде строки' });
+    if (!cookies || typeof cookies !== 'string') {
+        return res.status(400).json({ error: 'Необходимо предоставить cookies в виде строки' });
+    }
     const parsed = parseCookies(cookies);
-    if (Object.keys(parsed).length === 0) return res.status(400).json({ error: 'Не удалось распарсить cookies', hint: 'Поддерживаются: таблица браузера, name=value, JSON' });
+    if (Object.keys(parsed).length === 0) {
+        return res.status(400).json({ 
+            error: 'Не удалось распарсить cookies', 
+            hint: 'Поддерживаются: таблица браузера, name=value, JSON' 
+        });
+    }
     Object.entries(parsed).forEach(([n, v]) => sessionCookies[n] = v);
-    res.json({ success: true, message: 'Установлено ' + Object.keys(sessionCookies).length + ' cookies', cookiesCount: Object.keys(sessionCookies).length, parsedCount: Object.keys(parsed).length });
+    res.json({ 
+        success: true, 
+        message: 'Установлено ' + Object.keys(sessionCookies).length + ' cookies', 
+        cookiesCount: Object.keys(sessionCookies).length, 
+        parsedCount: Object.keys(parsed).length 
+    });
 });
 
 app.post('/api/chat', async (req, res) => {
     try {
         const { message, files = [] } = req.body;
-        if (!message) return res.status(400).json({ error: 'Сообщение обязательно' });
-        if (Object.keys(sessionCookies).length === 0) return res.status(401).json({ error: 'Требуется авторизация', loginUrl: 'http://localhost:' + PORT });
+        
+        if (!message) {
+            return res.status(400).json({ error: 'Сообщение обязательно' });
+        }
+        
+        if (Object.keys(sessionCookies).length === 0) {
+            return res.status(401).json({ error: 'Требуется авторизация', loginUrl: 'http://localhost:' + PORT });
+        }
+        
         const cookieString = Object.entries(sessionCookies).map(([n, v]) => n + '=' + v).join('; ');
+        
         let fileContext = '';
         if (files.length > 0) {
             fileContext = '\n\nКонтекст файлов:\n';
-            files.forEach((f, i) => { fileContext += '\n--- Файл ' + (i + 1) + ': ' + (f.path || 'без имени') + ' ---\n' + (f.content || '') + '\n'; });
+            files.forEach((f, i) => { 
+                fileContext += '\n--- Файл ' + (i + 1) + ': ' + (f.path || 'без имени') + ' ---\n' + (f.content || '') + '\n'; 
+            });
         }
-        const response = await axios.post('https://coder.qwen.ai/api/chat', { message: message + fileContext, stream: false }, { headers: { 'Content-Type': 'application/json', 'Cookie': cookieString, 'User-Agent': 'Mozilla/5.0' }, timeout: 60000 });
-        res.json({ success: true, response: response.data, timestamp: new Date().toISOString() });
+        
+        console.log('📤 Отправка запроса к Qwen Coder...');
+        console.log('🍪 Cookies:', Object.keys(sessionCookies).length, 'шт');
+        console.log('💬 Сообщение:', message.substring(0, 100) + '...');
+        
+        // Пробуем разные варианты эндпоинтов
+        const endpoints = [
+            'https://coder.qwen.ai/api/chat',
+            'https://coder.qwen.ai/api/v1/chat',
+            'https://coder.qwen.ai/v1/chat/completions'
+        ];
+        
+        let lastError = null;
+        let responseData = null;
+        
+        for (const endpoint of endpoints) {
+            try {
+                console.log('🔄 Попытка:', endpoint);
+                
+                const response = await axios.post(endpoint, 
+                    { 
+                        message: message + fileContext, 
+                        stream: false,
+                        model: 'qwen-coder-plus'
+                    }, 
+                    { 
+                        headers: { 
+                            'Content-Type': 'application/json', 
+                            'Cookie': cookieString, 
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            'Origin': 'https://coder.qwen.ai',
+                            'Referer': 'https://coder.qwen.ai/'
+                        }, 
+                        timeout: 60000 
+                    }
+                );
+                
+                responseData = response.data;
+                console.log('✅ Успех!', endpoint);
+                console.log('📦 Ответ:', JSON.stringify(responseData).substring(0, 200));
+                break;
+            } catch (err) {
+                lastError = err;
+                console.log('❌ Ошибка:', endpoint, err.response?.status || 'N/A', err.message);
+                if (err.response) {
+                    console.log('📄 Детали ошибки:', JSON.stringify(err.response.data).substring(0, 500));
+                }
+            }
+        }
+        
+        if (!responseData) {
+            throw lastError || new Error('Все эндпоинты не доступны');
+        }
+        
+        res.json({ success: true, response: responseData, timestamp: new Date().toISOString() });
     } catch (error) {
-        console.error('Ошибка:', error.message);
-        if (error.response) res.status(error.response.status).json({ error: 'Ошибка API Qwen', details: error.response.data });
-        else if (error.code === 'ECONNABORTED') res.status(408).json({ error: 'Таймаут' });
-        else res.status(500).json({ error: 'Внутренняя ошибка', message: error.message });
+        console.error('❌ Критическая ошибка:', error.message);
+        if (error.response) {
+            res.status(error.response.status).json({ 
+                error: 'Ошибка API Qwen', 
+                status: error.response.status,
+                details: error.response.data,
+                headers: error.response.headers
+            });
+        } else if (error.code === 'ECONNABORTED') {
+            res.status(408).json({ error: 'Таймаут ожидания ответа' });
+        } else {
+            res.status(500).json({ 
+                error: 'Внутренняя ошибка сервера', 
+                message: error.message,
+                stack: error.stack
+            });
+        }
     }
 });
 
-app.post('/api/auth/logout', (req, res) => { sessionCookies = {}; res.json({ success: true, message: 'Сессия очищена' }); });
+app.post('/api/auth/logout', (req, res) => { 
+    sessionCookies = {}; 
+    res.json({ success: true, message: 'Сессия очищена' }); 
+});
 
 app.listen(PORT, () => {
     console.log('🚀 Прокси-сервер запущен!');
