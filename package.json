@@ -4,6 +4,10 @@
   "description": "Мост между VS Code и Qwen Coder API - отправляйте запросы и файлы, получайте ответы и редактируйте код",
   "version": "0.0.1",
   "publisher": "qwen-coder-bridge",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AtmoclubGames/vscode-qwen-coder-plugin.git"
+  },
   "engines": {
     "vscode": "^1.95.0"
   },

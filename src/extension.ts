@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as https from 'https';
+import * as http from 'http';
 
 interface WebviewMessage {
     command: string;
@@ -15,6 +17,43 @@ interface WebviewMessage {
 
 let chatViewPanel: vscode.WebviewPanel | undefined;
 const contextFiles: Map<string, string> = new Map();
+
+// Функция для HTTP/HTTPS запросов (работает в Node.js среде VS Code)
+function makeRequest(url: string, options: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+        const parsedUrl = new URL(url);
+        const lib = parsedUrl.protocol === 'https:' ? https : http;
+        
+        const reqOptions: any = {
+            hostname: parsedUrl.hostname,
+            port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+            path: parsedUrl.pathname + parsedUrl.search,
+            method: options.method || 'GET',
+            headers: options.headers || {}
+        };
+
+        const req = lib.request(reqOptions, (res: any) => {
+            let data = '';
+            res.on('data', (chunk: any) => data += chunk);
+            res.on('end', () => {
+                try {
+                    const jsonData = JSON.parse(data);
+                    resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, json: () => Promise.resolve(jsonData) });
+                } catch (e) {
+                    resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, text: () => Promise.resolve(data) });
+                }
+            });
+        });
+
+        req.on('error', reject);
+        
+        if (options.body) {
+            req.write(options.body);
+        }
+        
+        req.end();
+    });
+}
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Qwen Coder Bridge активирован!');
@@ -151,31 +190,41 @@ async function handleAPICall(message: WebviewMessage, context: vscode.ExtensionC
     
     try {
         if (useProxy) {
-            // Отправка запроса через прокси-сервер
-            const response = await fetch(`${proxyUrl}/api/chat`, {
+            // Отправка запроса через прокси-сервер с использованием Node.js http/https
+            const body = JSON.stringify({
+                message: message.text || '',
+                files: Object.entries(message.fileContents || {}).map(([filePath, content]) => ({
+                    path: filePath,
+                    content: content
+                }))
+            });
+            
+            const response: any = await makeRequest(`${proxyUrl}/api/chat`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(body)
                 },
-                body: JSON.stringify({
-                    message: message.text || '',
-                    files: Object.entries(message.fileContents || {}).map(([filePath, content]) => ({
-                        path: filePath,
-                        content: content
-                    }))
-                })
+                body: body
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch((): any => ({}));
+                let errorData: any = {};
+                try {
+                    if (response.json) {
+                        errorData = await response.json();
+                    }
+                } catch (e) {
+                    // Игнорируем ошибки парсинга JSON
+                }
                 if (response.status === 401) {
                     throw new Error('Требуется авторизация в прокси-сервере. Откройте http://localhost:3000/api/auth/login-url для входа.');
                 }
-                const errorMsg = (errorData as any)?.error || (errorData as any)?.message || response.statusText;
+                const errorMsg = errorData?.error || errorData?.message || (response.text ? await response.text() : 'Неизвестная ошибка');
                 throw new Error(`HTTP ${response.status}: ${errorMsg}`);
             }
 
-            const data = await response.json() as any;
+            const data: any = await response.json();
             const assistantMessage = data.response?.content || data.response?.message || JSON.stringify(data.response);
 
             // Пытаемся извлечь предложенные изменения из ответа
@@ -234,7 +283,7 @@ async function handleDashScopeAPI(message: WebviewMessage, context: vscode.Exten
     if (message.fileContents && Object.keys(message.fileContents).length > 0) {
         userContent += '\n\n--- КОНТЕКСТ ФАЙЛОВ ---\n';
         for (const [filePath, content] of Object.entries(message.fileContents)) {
-            const fileName = require('path').basename(filePath);
+            const fileName = path.basename(filePath);
             userContent += `\nФайл: ${fileName}\nПуть: ${filePath}\nСодержимое:\n\`\`\`\n${content}\n\`\`\`\n`;
         }
     }
@@ -252,21 +301,30 @@ async function handleDashScopeAPI(message: WebviewMessage, context: vscode.Exten
         }
     };
 
-    const response = await fetch('https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation', {
+    const body = JSON.stringify(requestBody);
+    const response: any = await makeRequest('https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Length': Buffer.byteLength(body)
         },
-        body: JSON.stringify(requestBody)
+        body: body
     });
 
     if (!response.ok) {
-        const errorData = await response.json().catch((): any => ({}));
-        throw new Error(`HTTP ${response.status}: ${(errorData as any)?.message || response.statusText}`);
+        let errorData: any = {};
+        try {
+            if (response.json) {
+                errorData = await response.json();
+            }
+        } catch (e) {
+            // Игнорируем ошибки парсинга
+        }
+        throw new Error(`HTTP ${response.status}: ${errorData?.message || (response.text ? await response.text() : 'Неизвестная ошибка')}`);
     }
 
-    const data = await response.json() as any;
+    const data: any = await response.json();
     // Парсим ответ от DashScope
     const assistantMessage = data.output?.choices?.[0]?.message?.content || 'Нет ответа от модели';
 
