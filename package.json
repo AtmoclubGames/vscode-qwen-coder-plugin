@@ -6,7 +6,7 @@
   "publisher": "qwen-coder-bridge",
   "repository": {
     "type": "git",
-    "url": "https://github.com/AtmoclubGames/vscode-qwen-coder-plugin.git"
+    "url": "git+https://github.com/AtmoclubGames/vscode-qwen-coder-plugin.git"
   },
   "engines": {
     "vscode": "^1.95.0"
@@ -90,11 +90,22 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src --ext ts",
+    "start": "node server.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.95.0",
     "@types/node": "^20.x",
+    "@types/vscode": "^1.95.0",
     "typescript": "^5.x"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/AtmoclubGames/vscode-qwen-coder-plugin/issues"
+  },
+  "homepage": "https://github.com/AtmoclubGames/vscode-qwen-coder-plugin#readme",
+  "dependencies": {
+    "ws": "^8.21.3"
   }
 }

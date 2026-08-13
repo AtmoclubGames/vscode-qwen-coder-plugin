@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Slither.io Clone</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #1a1a1a; font-family: sans-serif; }
+        canvas { display: block; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; pointer-events: none; }
+        #startScreen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; color: white; z-index: 10;
+        }
+        input { padding: 10px; font-size: 16px; margin: 10px; border-radius: 5px; border: none; }
+        button { padding: 10px 20px; font-size: 18px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 5px; }
+        button:hover { background: #45a049; }
+    </style>
+</head>
+<body>
+    <div id="ui">Score: <span id="scoreVal">0</span></div>
+    <div id="startScreen">
+        <h1>Slither Clone</h1>
+        <input type="text" id="nickname" placeholder="Никнейм" value="Player">
+        <button onclick="startGame()">Играть</button>
+        <p style="font-size: 12px; color: #aaa;">Управление: Мышь для движения, Клик/Пробел для ускорения</p>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+// --- КОНФИГУРАЦИЯ СЕРВЕРА/КЛИЕНТА ---
+const SERVER_URL = window.location.hostname === 'localhost' ? 'ws://localhost:8080' : `ws://${window.location.hostname}:8080`;
+let ws;
+let myId = null;
+let snakes = {};
+let foods = [];
+let worldSize = 4000;
+let camera = { x: 0, y: 0 };
+let mouse = { x: 0, y: 0 };
+let isBoosting = false;
+let gameRunning = false;
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('scoreVal');
+const startScreen = document.getElementById('startScreen');
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+window.addEventListener('mousemove', e => {
+    mouse.x = e.clientX - canvas.width / 2;
+    mouse.y = e.clientY - canvas.height / 2;
+});
+window.addEventListener('mousedown', () => { isBoosting = true; sendInput(); });
+window.addEventListener('mouseup', () => { isBoosting = false; sendInput(); });
+window.addEventListener('keydown', e => { if(e.code === 'Space') isBoosting = true; sendInput(); });
+window.addEventListener('keyup', e => { if(e.code === 'Space') isBoosting = false; sendInput(); });
+
+function startGame() {
+    const nick = document.getElementById('nickname').value || 'Player';
+    startScreen.style.display = 'none';
+    gameRunning = true;
+    
+    ws = new WebSocket(SERVER_URL);
+    
+    ws.onopen = () => {
+        console.log('Connected to server');
+        ws.send(JSON.stringify({ type: 'join', name: nick }));
+    };
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'init') {
+            myId = data.id;
+        } else if (data.type === 'state') {
+            snakes = data.snakes;
+            foods = data.foods;
+            if (myId && snakes[myId]) {
+                scoreEl.innerText = Math.floor(snakes[myId].length);
+            }
+        } else if (data.type === 'dead') {
+            alert('Вы погибли! Перезагрузите страницу.');
+            location.reload();
+        }
+    };
+
+    ws.onclose = () => {
+        alert('Соединение разорвано. Перезагрузите страницу.');
+        location.reload();
+    };
+
+    requestAnimationFrame(loop);
+}
+
+function sendInput() {
+    if (!ws || !myId) return;
+    ws.send(JSON.stringify({
+        type: 'input',
+        angle: Math.atan2(mouse.y, mouse.x),
+        boost: isBoosting
+    }));
+}
+
+function loop() {
+    if (!gameRunning) return;
+    
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (!myId || !snakes[myId]) {
+        requestAnimationFrame(loop);
+        return;
+    }
+
+    const head = snakes[myId];
+    camera.x = head.x;
+    camera.y = head.y;
+
+    ctx.save();
+    ctx.translate(canvas.width / 2 - camera.x, canvas.height / 2 - camera.y);
+
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    const gridSize = 100;
+    const startX = Math.floor((camera.x - canvas.width/2) / gridSize) * gridSize;
+    const startY = Math.floor((camera.y - canvas.height/2) / gridSize) * gridSize;
+    
+    for (let x = startX; x < startX + canvas.width + gridSize; x += gridSize) {
+        ctx.beginPath(); ctx.moveTo(x, camera.y - canvas.height/2); ctx.lineTo(x, camera.y + canvas.height/2); ctx.stroke();
+    }
+    for (let y = startY; y < startY + canvas.height + gridSize; y += gridSize) {
+        ctx.beginPath(); ctx.moveTo(camera.x - canvas.width/2, y); ctx.lineTo(camera.x + canvas.width/2, y); ctx.stroke();
+    }
+
+    foods.forEach(f => {
+        ctx.fillStyle = f.color;
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    Object.values(snakes).forEach(snake => {
+        if (snake.path.length < 2) return;
+        
+        ctx.fillStyle = snake.color;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+
+        for (let i = snake.path.length - 1; i >= 0; i--) {
+            const p = snake.path[i];
+            const size = 12 + (snake.length / 50);
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        const headP = snake.path[snake.path.length-1];
+        const angle = snake.angle;
+        const eyeOffX = Math.cos(angle - 0.5) * 10;
+        const eyeOffY = Math.sin(angle - 0.5) * 10;
+        const eyeOffX2 = Math.cos(angle + 0.5) * 10;
+        const eyeOffY2 = Math.sin(angle + 0.5) * 10;
+
+        ctx.fillStyle = 'white';
+        ctx.beginPath(); ctx.arc(headP.x + eyeOffX, headP.y + eyeOffY, 4, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(headP.x + eyeOffX2, headP.y + eyeOffY2, 4, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'black';
+        ctx.beginPath(); ctx.arc(headP.x + eyeOffX*1.2, headP.y + eyeOffY*1.2, 2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(headP.x + eyeOffX2*1.2, headP.y + eyeOffY2*1.2, 2, 0, Math.PI*2); ctx.fill();
+
+        ctx.fillStyle = 'white';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(snake.name, headP.x, headP.y - 20);
+    });
+
+    ctx.restore();
+    requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
